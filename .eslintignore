@@ -1,0 +1,17 @@
+# 忽略编译后的文件
+vite.config.js
+vite.config.d.ts
+
+# 忽略依赖
+node_modules/
+
+# 忽略构建输出
+dist/
+# （sub2site 独立部署，不写回 sub2api 的 embed 目录）
+
+# 忽略缓存
+.cache/
+.vite/
+
+# 设计稿产物：Claude Design 的画布文件与运行时，不是本项目源码
+docs/design/

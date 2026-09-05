@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 首屏占位标题。JS 起来后由 main.ts / router 用后台配置的 site_name 覆盖。
+         这里不能写具体品牌名——静态文件拿不到 site_name，写死会在加载瞬间闪出错误的牌子。 -->
+    <title>AI API Gateway</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

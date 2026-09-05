@@ -1,0 +1,24 @@
+services:
+  sub2site:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sub2site:latest
+    container_name: sub2site
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - sub2api-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--header=Host: www.aiproxy.com", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  # 复用 sub2api 已有的 compose 网络，容器名 sub2api 可直接解析
+  sub2api-net:
+    external: true
+    name: sub2api-deploy_sub2api-network

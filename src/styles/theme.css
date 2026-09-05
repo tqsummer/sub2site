@@ -1,0 +1,251 @@
+/**
+ * AIProxy 设计 token 层
+ *
+ * 从设计稿 `docs/design/.../aiproxy-theme.css` 抽取，并修正了设计稿里的三处缺陷：
+ *
+ *   1. 设计稿把字体/圆角/时长和颜色一起定义在 `.ap, [data-theme="light"]` 里，
+ *      而暗色只覆盖颜色。脱离 `.ap` 的暗色节点拿不到字体和圆角。
+ *      这里把非颜色 token 提到无条件的 `:root`。
+ *   2. 设计稿用远程 Google Fonts `@import`，国内网络和 CSP 都会挂。
+ *      这里改成 `@fontsource` 自托管，在 main.ts 里 import。
+ *   3. 设计稿早期版本的 `.ap button, input, select` 漏了 `textarea`。已补。
+ *
+ * 两处与设计稿的**有意偏离**：
+ *
+ *   A. 暗色选择器并行维护 `.dark` 和 `[data-theme="dark"]`。
+ *      现有代码是 `html.dark` + Tailwind `darkMode:'class'`，全站几百个 `dark:*` 类。
+ *      只切到 `[data-theme]` 会让现有页面暗色全部失效。
+ *
+ *   B. `primary` 色阶在明暗两色下**保持同一条单调阶梯**，不采用设计稿暗色里
+ *      反转的 accent ramp（设计稿暗色 400 是深蓝、700 是浅蓝）。
+ *      原因：现有代码大量写 `text-primary-600 dark:text-primary-400`，
+ *      这类写法假定编号越小越浅。反转后 `dark:primary-400` 会变成深蓝压在深底上，
+ *      直接不可读。设计稿反转 ramp 是给新组件用语义 token 的场景准备的，
+ *      那部分由 `--color-accent-text` 等语义 token 承担。
+ *
+ * 颜色以 “R G B” 通道值存储（`--c-*`），供 Tailwind 配合 `<alpha-value>` 生成
+ * `bg-primary-500/50` 这类带透明度的工具类；同时提供 `--color-*` 完整色值别名，
+ * 供组件内直接 `var(--color-accent)` 使用（设计稿画布就是这么写的）。
+ */
+
+/* ── 非颜色 token：无条件，任何节点都能拿到 ────────────────────────── */
+:root {
+  --font-body: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-body);
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+
+  /* 4px 网格。2:发丝间隙 · 4:图标↔文字 · 8:行内组 · 12:卡片间距/列表行
+     16:卡片内边距(紧凑) · 20:卡片内边距(默认) · 24:页面留白 · 32:区块间距 · 48:页面大块 */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --dur-fast: 150ms;
+  --dur-pop: 200ms;
+  --dur-page: 300ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* primary 色阶：明暗共用，单调（见文件头说明 B）。
+     50 与 950 是为补齐 Tailwind 两端新增的，100–900 与设计稿逐值一致。 */
+  --c-primary-50: 247 250 255;
+  --c-primary-100: 239 244 255;
+  --c-primary-200: 219 230 254;
+  --c-primary-300: 191 211 254;
+  --c-primary-400: 126 166 250;
+  --c-primary-500: 37 99 235;
+  --c-primary-600: 29 78 216;
+  --c-primary-700: 30 64 175;
+  --c-primary-800: 30 58 138;
+  --c-primary-900: 23 37 84;
+  --c-primary-950: 13 19 46;
+}
+
+/* ── 亮色（默认）─────────────────────────────────────────────────── */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  --c-bg: 245 246 250;
+  --c-surface: 253 253 255;
+  --c-surface-2: 243 245 254;
+  --c-surface-3: 233 236 246;
+
+  --c-text: 23 25 34; /* 16.22:1 */
+  --c-text-2: 89 93 108; /* 6.06:1 */
+  --c-text-3: 100 104 122; /* 5.11:1 — 说明文字、表头、元信息 */
+
+  --c-divider: 226 229 240;
+  --c-divider-strong: 207 211 229;
+
+  --c-accent: 37 99 235;
+  --c-accent-text: 37 99 235; /* 4.79:1 — 链接与强调数字，仅 ≥14px */
+  --c-accent-hover: 29 78 216;
+  --c-accent-active: 30 64 175;
+  --c-accent-soft: 234 240 254;
+  --c-accent-soft-2: 214 226 253;
+  --c-on-accent: 247 249 255;
+
+  --c-success: 21 128 61;
+  --c-success-soft: 230 244 234;
+  --c-warning: 180 83 9;
+  --c-warning-soft: 253 241 223;
+  --c-danger: 217 32 32; /* 4.65:1 on bg — 设计稿原值 #dc2626 只有 4.47:1 */
+  --c-danger-soft: 253 232 232;
+
+  /* 平台标识色：只用于圆点、徽章、平台强调条，不用于正文 */
+  --c-platform-claude: 217 119 87;
+  --c-platform-openai: 16 163 127;
+  --c-platform-gemini: 66 133 244;
+  --c-platform-antigravity: 124 58 237;
+  --c-platform-grok: 31 41 55;
+
+  /* 图表分类色板：7 色，Okabe-Ito 衍生，色觉障碍下可区分。非语义色。 */
+  --c-chart-1: 37 99 235;
+  --c-chart-2: 230 159 0;
+  --c-chart-3: 0 158 115;
+  --c-chart-4: 204 121 167;
+  --c-chart-5: 86 180 233;
+  --c-chart-6: 213 94 0;
+  --c-chart-7: 140 140 140;
+
+  --shadow-sm: 0 0 0 1px var(--color-divider);
+  --shadow-md: 0 0 0 1px var(--color-divider), 0 6px 16px rgb(23 25 34 / 0.08);
+  --shadow-lg: 0 0 0 1px var(--color-divider), 0 16px 40px rgb(23 25 34 / 0.14);
+}
+
+/* ── 暗色：`.dark` 与 `[data-theme="dark"]` 并行（见文件头说明 A）──── */
+:root.dark,
+.dark,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-bg: 19 21 32;
+  --c-surface: 25 27 40;
+  --c-surface-2: 33 35 49;
+  --c-surface-3: 42 44 59;
+
+  --c-text: 233 233 237; /* 15.01:1 */
+  --c-text-2: 158 162 181; /* 7.17:1 */
+  --c-text-3: 134 138 155; /* 5.30:1 */
+
+  --c-divider: 43 46 60;
+  --c-divider-strong: 63 66 77;
+
+  --c-accent: 37 99 235;
+  --c-accent-text: 122 162 247; /* 7.21:1 */
+  --c-accent-hover: 59 118 240;
+  --c-accent-active: 29 78 216;
+  --c-accent-soft: 27 39 69;
+  --c-accent-soft-2: 34 51 93;
+  --c-on-accent: 247 249 255;
+
+  --c-success: 52 211 153;
+  --c-success-soft: 20 50 42;
+  --c-warning: 251 191 36;
+  --c-warning-soft: 54 43 18;
+  --c-danger: 248 113 113;
+  --c-danger-soft: 58 28 31;
+
+  --c-platform-claude: 232 137 95;
+  --c-platform-openai: 47 197 154;
+  --c-platform-gemini: 106 160 255;
+  --c-platform-antigravity: 167 139 250;
+  --c-platform-grok: 209 213 219;
+
+  --c-chart-1: 122 162 247;
+  --c-chart-2: 240 180 41;
+  --c-chart-3: 47 197 154;
+  --c-chart-4: 227 154 198;
+  --c-chart-5: 124 201 245;
+  --c-chart-6: 242 135 79;
+  --c-chart-7: 154 154 154;
+
+  --shadow-sm: 0 0 0 1px var(--color-divider);
+  --shadow-md: 0 0 0 1px var(--color-divider-strong), 0 6px 18px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 0 0 1px var(--color-divider-strong), 0 16px 40px rgb(0 0 0 / 0.6);
+}
+
+/* ── 完整色值别名 ───────────────────────────────────────────────────
+   `--c-*` 是通道值，只能配合 rgb() 使用；这里派生出可直接使用的完整色值，
+   让组件里能写 `background: var(--color-surface)`，与设计稿画布的写法一致。
+   随主题自动跟随，无需在暗色块里重复定义。 */
+:root {
+  --color-bg: rgb(var(--c-bg));
+  --color-surface: rgb(var(--c-surface));
+  --color-surface-2: rgb(var(--c-surface-2));
+  --color-surface-3: rgb(var(--c-surface-3));
+
+  --color-text: rgb(var(--c-text));
+  --color-text-2: rgb(var(--c-text-2));
+  --color-text-3: rgb(var(--c-text-3));
+
+  --color-divider: rgb(var(--c-divider));
+  --color-divider-strong: rgb(var(--c-divider-strong));
+
+  --color-accent: rgb(var(--c-accent));
+  --color-accent-text: rgb(var(--c-accent-text));
+  --color-accent-hover: rgb(var(--c-accent-hover));
+  --color-accent-active: rgb(var(--c-accent-active));
+  --color-accent-soft: rgb(var(--c-accent-soft));
+  --color-accent-soft-2: rgb(var(--c-accent-soft-2));
+  --color-on-accent: rgb(var(--c-on-accent));
+
+  --color-success: rgb(var(--c-success));
+  --color-success-soft: rgb(var(--c-success-soft));
+  --color-warning: rgb(var(--c-warning));
+  --color-warning-soft: rgb(var(--c-warning-soft));
+  --color-danger: rgb(var(--c-danger));
+  --color-danger-soft: rgb(var(--c-danger-soft));
+
+  --platform-claude: rgb(var(--c-platform-claude));
+  --platform-openai: rgb(var(--c-platform-openai));
+  --platform-gemini: rgb(var(--c-platform-gemini));
+  --platform-antigravity: rgb(var(--c-platform-antigravity));
+  --platform-grok: rgb(var(--c-platform-grok));
+
+  --chart-1: rgb(var(--c-chart-1));
+  --chart-2: rgb(var(--c-chart-2));
+  --chart-3: rgb(var(--c-chart-3));
+  --chart-4: rgb(var(--c-chart-4));
+  --chart-5: rgb(var(--c-chart-5));
+  --chart-6: rgb(var(--c-chart-6));
+  --chart-7: rgb(var(--c-chart-7));
+}
+
+/* ── 表单控件继承字体 ────────────────────────────────────────────────
+   浏览器默认不让表单控件继承 font-family，必须显式声明。
+   设计稿早期版本漏了 textarea，这里补齐。 */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* 数字等宽对齐：表格里的金额、耗时、计数不会因字宽跳动 */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
