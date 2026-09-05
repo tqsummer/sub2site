@@ -396,20 +396,15 @@
         <p class="text-sm text-content-2">
           &copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}
         </p>
-        <div class="flex items-center gap-4">
+        <!-- 页脚只留后台配置的文档链接。原来这里硬编码了上游 sub2api 的
+             GitHub 仓库地址，属于品牌泄漏，已移除。 -->
+        <div v-if="docUrl" class="flex items-center gap-4">
           <a
-            v-if="docUrl"
             :href="docUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-sm text-content-2 transition-colors hover:text-content-2 dark:hover:text-white"
+            class="text-sm text-content-2 transition-colors hover:text-content"
           >{{ t('home.docs') }}</a>
-          <a
-            :href="githubUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-sm text-content-2 transition-colors hover:text-content-2 dark:hover:text-white"
-          >GitHub</a>
         </div>
       </div>
     </footer>
@@ -435,7 +430,6 @@ const appStore = useAppStore()
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
 
 // ==================== Theme (same as HomeView) ====================
 

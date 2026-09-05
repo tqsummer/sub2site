@@ -7724,6 +7724,7 @@
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ t("admin.settings.payment.description") }}
                 <a
+                  v-if="paymentGuideHref"
                   :href="paymentGuideHref"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -8189,6 +8190,7 @@
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") }}
                     <a
+                      v-if="paymentMethodsHref"
                       :href="paymentMethodsHref"
                       target="_blank"
                       rel="noopener noreferrer"
@@ -8850,17 +8852,17 @@ function localText(zh: string, en: string): string {
   return isZhLocale.value ? zh : en;
 }
 
-const paymentGuideHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
-);
+// 支付配置指南原本硬编码指向上游 sub2api 仓库，属于品牌泄漏。
+// 改为跟随后台配置的文档站（doc_url）；未配置时返回空串，模板里 v-if 不渲染链接。
+const paymentGuideHref = computed(() => {
+  const base = (appStore.docUrl || "").replace(/\/+$/, "");
+  return base ? `${base}/payment` : "";
+});
 
-const paymentMethodsHref = computed(() =>
-  locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
-);
+const paymentMethodsHref = computed(() => {
+  const base = (appStore.docUrl || "").replace(/\/+$/, "");
+  return base ? `${base}/payment#methods` : "";
+});
 
 type SettingsTab =
   | "general"

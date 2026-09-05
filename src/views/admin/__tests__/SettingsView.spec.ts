@@ -126,6 +126,8 @@ vi.mock("@/stores", () => ({
     showWarning: vi.fn(),
     showInfo: vi.fn(),
     fetchPublicSettings,
+    // 支付指南链接跟随后台配置的文档站；测试里给一个固定值
+    docUrl: "https://docs.example.com",
   }),
 }));
 
@@ -1035,7 +1037,7 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
-  it("links payment guidance to README sections instead of removed payment docs", async () => {
+  it("links payment guidance to the configured docs site, not the upstream repo", async () => {
     const wrapper = mountView();
 
     await flushPromises();
@@ -1048,14 +1050,11 @@ describe("admin SettingsView payment visible method controls", () => {
       );
 
     expect(paymentLinks).toHaveLength(2);
-    expect(paymentLinks[0]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md",
-    );
-    expect(paymentLinks[1]?.attributes("href")).toBe(
-      "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式",
-    );
+    expect(paymentLinks[0]?.attributes("href")).toBe("https://docs.example.com/payment");
+    expect(paymentLinks[1]?.attributes("href")).toBe("https://docs.example.com/payment#methods");
+    // 不得再出现上游 sub2api 仓库地址
     for (const link of paymentLinks) {
-      expect(link.attributes("href")).toContain("docs/PAYMENT");
+      expect(link.attributes("href")).not.toContain("github.com");
     }
   });
 
