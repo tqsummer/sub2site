@@ -6,9 +6,11 @@
          下面的脚本若在缓存里找到真实 Logo，会立刻把它换掉。 -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- 首屏占位标题。JS 起来后由 main.ts / router 用后台配置的 site_name 覆盖。
-         这里不能写具体品牌名——静态文件拿不到 site_name，写死会在加载瞬间闪出错误的牌子。 -->
-    <title>AI API Gateway</title>
+    <!-- 故意留空。静态文件拿不到 site_name，任何写死的值都是错的：
+         上游品牌名会闪出别家的牌子，自己编一个通用产品名同样是用户
+         从没见过的假品牌。留空时浏览器标签直接显示域名（如 cloud.airouterx.com），
+         那是站点真实的身份，且下一行的脚本 / JS 起来后会立刻换成 site_name。 -->
+    <title></title>
     <script>
       /*
         回访用户的品牌提前上屏。
