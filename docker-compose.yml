@@ -6,12 +6,12 @@ services:
     image: sub2site:latest
     container_name: sub2site
     restart: unless-stopped
-    ports:
-      - "80:80"
+    # 不暴露端口：由 edge-nginx 统一入口反代（与生产架构一致）。
+    # 暴露了反而会绕过 edge 的管理接口拦截与 HTTPS 跳转。
     networks:
       - sub2api-net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "--header=Host: www.aiproxy.com", "http://127.0.0.1/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
