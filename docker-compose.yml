@@ -8,6 +8,11 @@ services:
     restart: unless-stopped
     # 不暴露端口：由 edge-nginx 统一入口反代（与生产架构一致）。
     # 暴露了反而会绕过 edge 的管理接口拦截与 HTTPS 跳转。
+    environment:
+      # 注入到 index.html 的 <title>，让首次访问的用户第一帧就看到正确品牌
+      # （静态托管没有后端渲染那一层，详见 deploy/nginx.conf.template）。
+      # 应与后台设置里的 site_name 保持一致；改了要重启容器。
+      SITE_NAME: "AiRouterX"
     networks:
       - sub2api-net
     healthcheck:

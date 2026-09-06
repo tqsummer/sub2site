@@ -6,11 +6,18 @@
          下面的脚本若在缓存里找到真实 Logo，会立刻把它换掉。 -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- 故意留空。静态文件拿不到 site_name，任何写死的值都是错的：
-         上游品牌名会闪出别家的牌子，自己编一个通用产品名同样是用户
-         从没见过的假品牌。留空时浏览器标签直接显示域名（如 cloud.airouterx.com），
-         那是站点真实的身份，且下一行的脚本 / JS 起来后会立刻换成 site_name。 -->
-    <title></title>
+    <!-- 内容是一个不间断空格（U+00A0），不是留空。
+         静态文件拿不到 site_name，写死任何值都是错的：上游品牌名会闪出别家的
+         牌子，自己编一个通用产品名同样是用户没见过的假品牌。但真的留成空串时，
+         浏览器会回退去显示「域名+路径」当标签名（cloud.airouterx.com/key-usage），
+         也不好看。&#160; 是非空字符串且不会被 trim 掉，标签页显示为空白。
+
+         正常情况下用户看不到它：容器 nginx 会用 SITE_NAME 把整个标签替换成真实
+         站点名（见 deploy/nginx.conf.template），下面的脚本和 JS 也会再纠正一次。
+         它只是没配 SITE_NAME 时的兜底。
+
+         注意：这一行的字面量同时是 nginx sub_filter 的匹配串，改动要两边同步。 -->
+    <title>&#160;</title>
     <script>
       /*
         回访用户的品牌提前上屏。

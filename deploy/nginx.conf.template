@@ -1,0 +1,70 @@
+# ============================================================================
+# sub2site 容器内 nginx —— 只做静态文件服务
+#
+# 反代（/api、/v1、/v1beta、/antigravity、/backend-api）与管理接口拦截
+# 全部由外层的 edge-nginx 负责。这里刻意不重复那些规则：
+#   - 两层都写会出现「改了一层没生效」的排查陷阱
+#   - 本容器不暴露端口，只有 edge 能访问，重复防护没有额外收益
+#
+# 换域名 / 加域名 / 调整路由，只需改 edge 的配置，不用重建本镜像。
+#
+# 本文件是 envsubst 模板（挂到 /etc/nginx/templates/default.conf.template），
+# 官方镜像的 20-envsubst-on-templates.sh 启动时渲染到 conf.d/。
+# 只有 SITE_ 开头的环境变量会被替换（见 Dockerfile 里的 NGINX_ENVSUBST_FILTER），
+# 所以 $uri / $host 这类 nginx 变量不受影响。
+# ============================================================================
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # ---- 把丢失的「配置注入层」补回来 ----
+    # sub2api 是后端渲染 index.html，能把 site_name 直接写进 <title>。
+    # sub2site 是纯静态托管，没有这一层：index.html 里只能放一个空白占位
+    # （写死任何值都是假品牌），首次访问的用户在 bundle 下载完之前只能看到它。
+    # 回访用户有 localStorage 缓存，不受影响。
+    #
+    # 这里用 sub_filter 在 nginx 吐 HTML 时替换，等价于恢复了注入层：
+    # 首次访问第一帧就是正确品牌，且镜像本身仍然不含任何品牌——
+    # 名字由各部署方在 compose 里给 SITE_NAME，镜像可以公开复用。
+    #
+    # 匹配串必须与 index.html 里的 <title> 一字不差（含 &#160; 实体），
+    # 改一边就会静默失效——sub_filter 匹配不上不会报错。
+    # 未设置 SITE_NAME 时 Dockerfile 的默认值也是 &#160;，替换成自身，无害。
+    #
+    # 注意：后台改了 site_name 后这里会滞后，需同步改 compose 并重启；
+    # 但页面 JS 拿到接口结果后会立刻纠正，只影响首帧。
+    sub_filter '<title>&#160;</title>' '<title>${SITE_NAME}</title>';
+    sub_filter_once on;
+    # 默认只作用于 text/html，assets 不受影响；本站没开 gzip_static，
+    # 不存在「预压缩文件绕过 sub_filter」的问题。
+
+    # 本文件被挂进 conf.d/，处在 http 块内部，所以不能定义 log_format
+    # （那是 http 级指令）。访问日志已由 edge 层统一记录，含真实客户端 IP，
+    # 这里保持默认即可，不必重复记一份。
+
+    # 带内容哈希的构建产物可以长期强缓存
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # index.html 必须每次回源校验，否则发版后用户会拿到旧壳子引用新哈希资源
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
+    # SPA 回落：前端路由（/dashboard、/keys…）在服务端没有对应文件
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 容器健康检查用，不经过 edge
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+}
