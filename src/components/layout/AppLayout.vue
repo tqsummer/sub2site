@@ -26,20 +26,25 @@
 import '@/styles/onboarding.css'
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
-import { useAuthStore } from '@/stores/auth'
 import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
 
 const appStore = useAppStore()
-const authStore = useAuthStore()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
-const isAdmin = computed(() => authStore.user?.role === 'admin')
 
+// 新手引导不再自动弹出，且不再区分管理员。
+//
+// 原实现里自动弹出只对 role === 'admin' 生效，走的是「分组管理 / 账号池」
+// 那套管理端引导。但 sub2site 已剥离管理端，那些页面和 [data-tour] 锚点
+// 都不存在了——引导会指向找不到的元素，而且文案讲的是用户根本用不到的功能。
+//
+// 管理员在 sub2site 里看到的与普通用户完全一致，所以统一用 user_guide，
+// 并关掉自动弹。用户仍可从帮助入口手动触发（replayTour 照常暴露）。
 const { replayTour } = useOnboardingTour({
-  storageKey: isAdmin.value ? 'admin_guide' : 'user_guide',
-  autoStart: true
+  storageKey: 'user_guide',
+  autoStart: false
 })
 
 const onboardingStore = useOnboardingStore()
