@@ -14,6 +14,53 @@ import {
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
 
+/**
+ * 品牌信息的本地缓存。
+ *
+ * sub2site 是纯静态托管，拿不到 sub2api 那套 SSR 注入的 window.__APP_CONFIG__，
+ * 站点名与 Logo 必须等 /api/v1/settings/public 返回才知道。网络慢时会有一段空窗，
+ * 首屏若渲染任何兜底品牌名，就会出现「先闪错名字再切换」——线上实测可见。
+ *
+ * 所以把上次成功获取的品牌信息存进 localStorage：
+ *   - 回访用户：首帧即正确，无闪烁
+ *   - 首次访问：留空，宁可短暂无名，也绝不显示错误品牌
+ *
+ * 只缓存站点名与 Logo 这两项纯展示数据，不涉及权限与用量，过期风险仅是
+ * 管理员刚改过品牌时旧访客首帧看到旧名，下一帧即被接口结果覆盖。
+ */
+const BRAND_CACHE_KEY = 'site_brand'
+
+interface BrandCache {
+  site_name: string
+  site_logo: string
+}
+
+function readBrandCache(): BrandCache {
+  const empty: BrandCache = { site_name: '', site_logo: '' }
+  if (typeof localStorage === 'undefined') return empty
+  try {
+    const raw = localStorage.getItem(BRAND_CACHE_KEY)
+    if (!raw) return empty
+    const parsed = JSON.parse(raw) as Partial<BrandCache>
+    return {
+      site_name: typeof parsed.site_name === 'string' ? parsed.site_name : '',
+      site_logo: typeof parsed.site_logo === 'string' ? parsed.site_logo : '',
+    }
+  } catch {
+    // 缓存损坏时按无缓存处理，不能让它影响应用启动
+    return empty
+  }
+}
+
+function writeBrandCache(siteName: string, siteLogo: string): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(BRAND_CACHE_KEY, JSON.stringify({ site_name: siteName, site_logo: siteLogo }))
+  } catch {
+    // 隐私模式或存储配额满时静默失败，只是失去下次的免闪烁优化
+  }
+}
+
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
 
@@ -26,8 +73,16 @@ export const useAppStore = defineStore('app', () => {
   // Public settings cache state
   const publicSettingsLoaded = ref<boolean>(false)
   const publicSettingsLoading = ref<boolean>(false)
-  const siteName = ref<string>('Sub2API')
-  const siteLogo = ref<string>('')
+  // 首屏兜底绝不能是具体品牌名。
+  //
+  // sub2api 自己的前端不会闪，因为后端用 SSR 把 window.__APP_CONFIG__ 注进了 HTML；
+  // sub2site 是纯静态托管，没有这层注入，只能等 /settings/public 返回。
+  // 如果初值写死成某个品牌，页面就会先闪出错误的名字再切换——线上实测可见。
+  //
+  // 解法两层：初值取自 localStorage 里上次拿到的品牌信息（回访用户瞬间正确），
+  // 没有缓存时留空（首次访问宁可短暂无名，也不能显示错误品牌）。
+  const siteName = ref<string>(readBrandCache().site_name)
+  const siteLogo = ref<string>(readBrandCache().site_logo)
   const siteVersion = ref<string>('')
   const contactInfo = ref<string>('')
   const apiBaseUrl = ref<string>('')
@@ -294,7 +349,8 @@ export const useAppStore = defineStore('app', () => {
       window.__APP_CONFIG__ = { ...config }
     }
     cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'Sub2API'
+    siteName.value = config.site_name || ''
+    writeBrandCache(config.site_name || '', config.site_logo || '')
     siteLogo.value = config.site_logo || ''
     // 用户端不展示后端版本号（避免暴露版本便于针对性攻击）。
     // 注：sub2api 原生页面的 SSR 注入里 version 本就为空，此处对齐该行为。

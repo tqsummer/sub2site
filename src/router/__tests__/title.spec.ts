@@ -10,9 +10,13 @@ describe('resolveDocumentTitle', () => {
     expect(resolveDocumentTitle(undefined, 'My Site')).toBe('My Site')
   })
 
-  it('站点名为空时，回退默认站点名', () => {
-    expect(resolveDocumentTitle('Dashboard', '')).toBe('Dashboard - Sub2API')
-    expect(resolveDocumentTitle(undefined, '   ')).toBe('Sub2API')
+  // 站点名未就绪时不能兜底成具体品牌：静态托管下配置要等接口返回，
+  // 写死会让标签页先闪出错误品牌再切换（线上实测可见）。
+  it('站点名为空时只显示页面名，不带任何品牌后缀', () => {
+    expect(resolveDocumentTitle('Dashboard', '')).toBe('Dashboard')
+    expect(resolveDocumentTitle(undefined, '   ')).toBe('')
+    // 尤其不能出现上游品牌名
+    expect(resolveDocumentTitle('Dashboard', '')).not.toContain('Sub2API')
   })
 
   it('站点名变更时仅影响后续路由标题计算', () => {

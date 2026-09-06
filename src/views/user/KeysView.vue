@@ -1903,7 +1903,9 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
       };
     }
   })`
-  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  // 兜底名不能写上游项目名——这个字符串会作为 provider 名字落进用户本机的
+  // CC-Switch 配置里，比页面上的闪烁更难收回。与 UseKeyModal 的生成配置同口径。
+  const providerName = (publicSettings.value?.site_name || '').trim() || 'AI Gateway'
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
     platform,

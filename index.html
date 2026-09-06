@@ -2,11 +2,54 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- 中性占位图标，不带任何品牌特征（见 public/logo.svg 内的说明）。
+         下面的脚本若在缓存里找到真实 Logo，会立刻把它换掉。 -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- 首屏占位标题。JS 起来后由 main.ts / router 用后台配置的 site_name 覆盖。
          这里不能写具体品牌名——静态文件拿不到 site_name，写死会在加载瞬间闪出错误的牌子。 -->
     <title>AI API Gateway</title>
+    <script>
+      /*
+        回访用户的品牌提前上屏。
+
+        sub2site 是纯静态托管，没有 sub2api 那套 SSR 注入的 window.__APP_CONFIG__，
+        站点名和 Logo 要等 /api/v1/settings/public 返回才知道。main.ts 里已经用
+        localStorage 缓存做过一次兜底，但那要等 JS bundle 下载 + 解析完才执行，
+        窗口标题和 favicon 在此之前一直是上面的占位值——线上首屏肉眼可见。
+
+        这段内联脚本在 HTML 解析到这里时就同步跑完，比 bundle 早一个数量级。
+        缓存的写入方在 src/stores/app.ts（BRAND_CACHE_KEY = 'site_brand'），
+        改那边的键名或字段时这里要同步改。
+
+        首次访问没有缓存则保持占位值：宁可短暂无名，也绝不显示错误的品牌。
+        任何异常都吞掉——这只是个体验优化，不能挡住应用启动。
+
+        注意：依赖 script-src 允许内联。若将来给站点加 CSP，需为本段配 nonce/hash。
+      */
+      ;(function () {
+        try {
+          var brand = JSON.parse(localStorage.getItem('site_brand') || '{}')
+
+          if (typeof brand.site_name === 'string' && brand.site_name) {
+            document.title = brand.site_name
+          }
+
+          // 只认 data:image、站内相对路径和 http(s)，把 javascript: 之类挡在外面。
+          // 与 utils/url.ts 的 sanitizeUrl 同口径，但内联脚本没法 import，只能重写一遍。
+          var logo = brand.site_logo
+          if (typeof logo === 'string' && /^(data:image\/|\/|https?:\/\/)/.test(logo)) {
+            var link = document.querySelector('link[rel="icon"]')
+            if (link) {
+              link.type = /\.svg$/.test(logo) ? 'image/svg+xml' : 'image/x-icon'
+              link.href = logo
+            }
+          }
+        } catch (e) {
+          /* 缓存损坏或隐私模式禁用存储，保持占位即可 */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

@@ -7,10 +7,18 @@ const { copyToClipboardMock, saveAsMock } = vi.hoisted(() => ({
   saveAsMock: vi.fn()
 }))
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string) => key
-  })
+// 保留原模块再覆盖 useI18n：组件间接依赖 stores/app，而它需要真实的 createI18n。
+vi.mock('vue-i18n', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-i18n')>()
+  return {
+    ...actual,
+    useI18n: () => ({ t: (key: string) => key })
+  }
+})
+
+// 配置示例里的品牌名取自站点设置，测试里给一个固定值
+vi.mock('@/stores/app', () => ({
+  useAppStore: () => ({ siteName: 'TestGateway' })
 }))
 
 vi.mock('@/composables/useClipboard', () => ({
@@ -164,7 +172,10 @@ describe('UseKeyModal', () => {
 
     const parsed = JSON.parse(wrapper.find('pre code').text())
     expect(parsed.provider.grok.npm).toBe('@ai-sdk/openai-compatible')
-    expect(parsed.provider.grok.name).toBe('Grok via Sub2API')
+    // 生成的配置会被用户复制进自己机器，品牌名必须跟随站点设置，
+    // 不能出现上游 sub2api 的名字
+    expect(parsed.provider.grok.name).toBe('Grok via TestGateway')
+    expect(parsed.provider.grok.name).not.toContain('Sub2API')
     expect(parsed.provider.grok.options).toEqual({
       baseURL: 'https://example.com/v1',
       apiKey: 'sk-grok-test'

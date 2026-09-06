@@ -52,7 +52,8 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const settings = computed(() => appStore.cachedPublicSettings)
-const siteName = computed(() => settings.value?.site_name || 'Sub2API')
+  // 兜底不写品牌名：静态托管下配置要等接口返回，写死会先闪出错误品牌。
+const siteName = computed(() => settings.value?.site_name || '')
 const siteLogo = computed(() =>
   sanitizeUrl(settings.value?.site_logo || '', { allowRelative: true, allowDataUrl: true })
 )
