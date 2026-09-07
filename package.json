@@ -2,6 +2,7 @@
   "name": "sub2site",
   "private": true,
   "version": "1.0.0",
+  "license": "LGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
