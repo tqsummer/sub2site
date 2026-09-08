@@ -19,13 +19,18 @@ services:
     image: nginx:1.27-alpine
     restart: always
     ports:
+      - "443:443"
+      # 80 不能关：Let's Encrypt 的 HTTP-01 质询每 60 天续签时走明文 80。
+      # 关掉 = 自动续期失效 = 证书 90 天后过期站点直接挂。
+      # nginx 配置里 80 只保留 ACME 质询，其余一律 302 跳 HTTPS。
       - "80:80"
-      # - "443:443"       # 证书签发后打开
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       # ACME HTTP-01 质询的 webroot。certbot 往这里写文件，nginx 从这里读。
       - ./acme-webroot:/var/www/acme:ro
-      # - /etc/letsencrypt:/etc/letsencrypt:ro    # 证书签发后打开
+      # 证书。整个 /etc/letsencrypt 挂进来是因为 live/ 下都是指向 archive/ 的
+      # 软链接，只挂 live/ 会读不到实际文件。
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./logs:/var/log/nginx
     environment:
       - TZ=Asia/Shanghai

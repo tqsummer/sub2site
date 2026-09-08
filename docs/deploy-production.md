@@ -198,18 +198,123 @@ curl -s --max-time 5 http://<公网IP>/ ; echo "退出码 $?"                   
 
 ---
 
-## 阶段 6 HTTPS
+## 阶段 6 HTTPS（Let's Encrypt + 自动续期）
 
-证书到位前先跑 HTTP，不影响功能。签发后：
+已在 18.222.226.206 上完整跑通，以下步骤照做即可。证书 90 天有效，certbot 在
+剩余 30 天内自动续。
 
-1. 证书放 `edge-deploy/certs/`，compose 打开 `"443:443"` 与 `./certs` 挂载
-2. 每个业务 server 块加 443 监听
+### ⚠ 先理解一件事：80 端口不能关
 
-**两个必踩的坑**：
+只提供 HTTPS 是对的，但 **80 必须继续监听**。Let's Encrypt 的 HTTP-01 质询在
+每次续签时会明文访问 `http://域名/.well-known/acme-challenge/xxx` —— 关掉 80
+等于自动续期失效，证书 90 天后过期、站点直接挂，而且不会有任何预警。
 
-- **`listen 443 ssl http2;`** —— nginx 1.24 只认这种写法。独立的 `http2 on;` 是
-  1.25+ 语法，1.24 上报 `unknown directive`。（新机器内核 6.18 没有 CentOS 7 的
-  seccomp 限制，其实可以直接上 1.25+，那就该用 `http2 on;`。**先确认镜像版本再写。**）
+正确做法是 80 上只保留两个 location：ACME 质询原样返回，其余一律跳 HTTPS。
+用户感知就是"只能用 HTTPS"，续期不受影响。
+
+安全组要同时放行 80 和 443。
+
+### 1. 先验证质询路径能通（省下无谓的失败重试）
+
+```bash
+sudo mkdir -p ~/edge-deploy/acme-webroot/.well-known/acme-challenge
+echo ok | sudo tee ~/edge-deploy/acme-webroot/.well-known/acme-challenge/probe.txt
+sudo chmod -R a+rX ~/edge-deploy/acme-webroot
+```
+
+从**外网**（不是服务器本机）访问，两个域名都要返回 `ok`：
+
+```bash
+curl http://cloud.airouterx.com/.well-known/acme-challenge/probe.txt
+curl http://sub-api.airouterx.com/.well-known/acme-challenge/probe.txt
+```
+
+不通就别往下走 —— Let's Encrypt 有失败频率限制，盲试会把额度耗掉。
+
+### 2. 签发
+
+```bash
+sudo dnf install -y certbot
+sudo certbot certonly --webroot -w /home/ec2-user/edge-deploy/acme-webroot \
+     -d cloud.airouterx.com -d sub-api.airouterx.com \
+     --email <邮箱> --agree-tos --no-eff-email --non-interactive
+```
+
+- 两个域名写在同一条命令 = **一张 SAN 证书**，目录名取第一个 `-d` 的值，
+  即 `/etc/letsencrypt/live/cloud.airouterx.com/`。nginx 里两个 server 块引用同一份。
+- 不想留邮箱就把 `--email`/`--no-eff-email` 换成 `--register-unsafely-without-email`。
+  代价：**续期万一静默失败，你收不到任何告警**，得自己定期查到期时间。
+
+### 3. 打开 443
+
+`edge-deploy/docker-compose.yml`：
+
+```yaml
+ports:
+  - "443:443"
+  - "80:80"          # 保留，见上面的说明
+volumes:
+  - /etc/letsencrypt:/etc/letsencrypt:ro    # 整个目录，不能只挂 live/
+```
+
+> `live/` 下全是指向 `archive/` 的软链接，只挂 `live/` 容器里会读不到实际文件。
+
+nginx 配置直接用仓库里的 `deploy/edge-nginx.conf.example`，它已经是 HTTPS 版本。
+
+**改了端口映射必须 `docker compose up -d` 重建，`reload` 不够。**
+
+### 4. 配置续签后的 reload 钩子（最容易漏的一步）
+
+certbot 跑在宿主上，不知道 nginx 在容器里。没有这个钩子，证书虽然续上了，
+**nginx 仍然拿着旧证书直到下次重启**：
+
+```bash
+sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-edge.sh >/dev/null <<'SH'
+#!/bin/sh
+docker exec edge-nginx nginx -s reload
+SH
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-edge.sh
+```
+
+### 5. 启用定时器并演练
+
+```bash
+sudo systemctl enable --now certbot-renew.timer
+systemctl list-timers certbot-renew.timer
+sudo certbot renew --dry-run --no-random-sleep-on-renew
+```
+
+- AL2023 的 certbot 包自带 `certbot-renew.timer`，但**默认是 disabled**，必须手动启用
+- **一定要加 `--no-random-sleep-on-renew`**：不加的话 certbot 会先随机 sleep 最多
+  几百秒（实测 374 秒），SSH 会话会先超时断开，进程还在后台占着锁，
+  下次再跑报 `Another instance of Certbot is already running`
+- `--dry-run` 走 Let's Encrypt 的演练环境，不消耗签发额度，可以放心多跑
+
+### 6. 验收
+
+```bash
+# HTTPS 通，证书有效（ssl_verify_result 为 0）
+curl -s -o /dev/null -w "%{http_code} %{ssl_verify_result}\n" https://cloud.airouterx.com/
+curl -s -o /dev/null -w "%{http_code} %{ssl_verify_result}\n" https://sub-api.airouterx.com/
+
+# 80 跳转且保留路径
+curl -s -o /dev/null -w "%{http_code} -> %{redirect_url}\n" http://cloud.airouterx.com/keys
+
+# ACME 路径必须仍是明文 200、不跳转 —— 这条挂了自动续期就废了
+curl -s -o /dev/null -w "%{http_code} redirect=[%{redirect_url}]\n" \
+     http://cloud.airouterx.com/.well-known/acme-challenge/probe.txt
+
+# 证书覆盖两个域名
+echo | openssl s_client -connect cloud.airouterx.com:443 -servername cloud.airouterx.com 2>/dev/null \
+  | openssl x509 -noout -dates -ext subjectAltName
+```
+
+### 两个坑
+
+- **`http2` 的写法跟 nginx 版本走**：1.25+ 是 `listen 443 ssl;` + 独立的 `http2 on;`；
+  1.24 及以下必须写成 `listen 443 ssl http2;`，写 `http2 on;` 会报 unknown directive。
+  生产用 1.27（内核 6.x 无 seccomp 限制），测试机 CentOS 7 只能用 1.24 —— **两边写法不同**。
 - **HTTP→HTTPS 跳转先用 302，稳定几天再换 301。** 301 会被浏览器永久缓存，
   一旦要回退，你没有任何办法远程清掉用户的缓存 —— 上次就是这么把 HTTP 访问搞挂的。
 
@@ -229,6 +334,16 @@ curl -s --max-time 5 http://<公网IP>/ ; echo "退出码 $?"                   
 | 8 | `sub-api` 域名进管理端 | 能登录 |
 | 9 | 用公网 IP 直接访问 | 连接断开 |
 | 10 | 磁盘 | `df -h /` 留有余量 |
+| 11 | HTTPS 证书 | `ssl_verify_result` 为 0，SAN 覆盖两个域名 |
+| 12 | 80 跳转 | 302 到 https，且**保留原路径** |
+| 13 | ACME 路径 | 明文 80 上仍返回 200 且不跳转 |
+| 14 | 续期定时器 | `systemctl is-enabled certbot-renew.timer` 为 enabled |
+| 15 | 续期演练 | `certbot renew --dry-run --no-random-sleep-on-renew` 通过 |
+| 16 | reload 钩子 | `/etc/letsencrypt/renewal-hooks/deploy/reload-edge.sh` 存在且可执行 |
+
+**后台配置**（全新库是出厂默认值，不配的话页面上显示的是 `Sub2API`）：
+登录管理端设置站点名、Logo、副标题、`api_base_url`（填 `https://sub-api.airouterx.com`）、
+模型广场开关。注意 `SITE_NAME` 环境变量与后台的 `site_name` 是两处配置，要保持一致。
 
 ---
 
@@ -252,7 +367,10 @@ docker image prune -f      # 每次发版后清理，别等磁盘满
 | 系统 | Amazon Linux | Amazon Linux 2023 |
 | 内核 | — | 6.18 |
 | 规格 | 2 核 / 7.6G / **20G** | 2 核 / 7G / **40G** |
-| compose | v0.12.1（buildx 太旧，`compose build` 直接报错）| 新装，无此问题 |
+| docker | — | 25.0.14 |
+| compose | v0.12.1（buildx 太旧，`compose build` 直接报错）| v5.5.1，无此问题 |
+| nginx (edge) | 1.24-alpine | 1.27-alpine（`http2 on;` 写法）|
+| certbot | 未装（一直跑 HTTP）| 2.6.0，webroot 模式 + systemd timer |
 
 - 老生产的 buildx 版本不够（`compose build requires buildx 0.17.0 or later`），
   这也是「镜像在测试机构建后推 Docker Hub」这个流程的由来。新机器新装的 compose 没这问题，

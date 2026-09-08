@@ -13,7 +13,17 @@
 #
 # 改配置：docker exec edge-nginx nginx -t && docker exec edge-nginx nginx -s reload
 # 改端口映射：必须 docker compose up -d 重建，reload 不够
-# ============================================================================
+#
+# ---------------------------------------------------------------------------
+# 关于 80 端口：不能关，但只干两件事
+#
+# 对外只提供 HTTPS，但 80 必须继续监听，因为 Let's Encrypt 的 HTTP-01 质询
+# 每 60 天续签时会明文访问 http://域名/.well-known/acme-challenge/xxx。
+# 关掉 80 = 自动续期失效 = 证书 90 天后过期站点直接挂。
+#
+# 所以 80 上只保留两个 location：ACME 质询原样返回，其余一律跳 HTTPS。
+# 用户侧感知就是"只能用 HTTPS"。
+# ---------------------------------------------------------------------------
 worker_processes auto;
 events { worker_connections 4096; }
 
@@ -61,6 +71,20 @@ http {
     # 用 Docker 内嵌 DNS 做运行时解析，目标服务重启换 IP 时 edge 不用重启
     resolver 127.0.0.11 ipv6=off valid=10s;
 
+    # TLS 通用参数
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # 证书由 certbot 以 webroot 方式签发，两个域名共用一张 SAN 证书，
+    # 所以路径都在 live/cloud.airouterx.com/ 下（首个 -d 参数决定目录名）。
+    ssl_certificate     /etc/letsencrypt/live/cloud.airouterx.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cloud.airouterx.com/privkey.pem;
+
+    # ======================= 80 端口 =======================
+
     # 未匹配域名（含以 IP 直接访问）一律断开，不暴露任何服务
     server {
         listen 80 default_server;
@@ -68,17 +92,42 @@ http {
         return 444;
     }
 
-    # ---- 用户端 ----
+    # 两个业务域名的 80：只放 ACME，其余跳 HTTPS
     server {
         listen 80;
-        server_name cloud.airouterx.com;
+        server_name cloud.airouterx.com sub-api.airouterx.com;
 
-        # ACME HTTP-01 质询。放在最前面，且**永远不要**跳转到 HTTPS——
-        # 续签时 Let's Encrypt 会明文访问这个路径。
+        # ACME HTTP-01 质询。必须在跳转之前，且**永远不要**跳到 HTTPS——
+        # 续签时 Let's Encrypt 就是明文访问这个路径的。
         location ^~ /.well-known/acme-challenge/ {
             root /var/www/acme;
             default_type "text/plain";
         }
+
+        # 其余一律跳 HTTPS。
+        # ⚠ 用 302 不用 301：301 会被浏览器永久缓存，一旦需要回退，
+        #   你没有任何办法远程清掉用户的缓存。稳定运行数日后再考虑换 301。
+        location / {
+            return 302 https://$host$request_uri;
+        }
+    }
+
+    # ======================= 443 端口 =======================
+
+    # 未匹配域名的 HTTPS 同样断开。
+    # 需要证书才能完成握手，复用业务证书即可（握手后立刻断）。
+    server {
+        listen 443 ssl default_server;
+        http2 on;
+        server_name _;
+        return 444;
+    }
+
+    # ---- 用户端 ----
+    server {
+        listen 443 ssl;
+        http2 on;                          # ← nginx 1.25+ 写法；1.24 及以下要写 listen 443 ssl http2
+        server_name cloud.airouterx.com;
 
         # 管理接口在用户端域名上一律拒绝。
         # 即便拿到管理员 JWT 也无法从这个域名调用；管理端请走 sub-api 域名。
@@ -112,13 +161,9 @@ http {
 
     # ---- sub2api 原生（含管理端）----
     server {
-        listen 80;
+        listen 443 ssl;
+        http2 on;
         server_name sub-api.airouterx.com;
-
-        location ^~ /.well-known/acme-challenge/ {
-            root /var/www/acme;
-            default_type "text/plain";
-        }
 
         location / {
             set $upstream http://sub2api:8080;
@@ -128,50 +173,32 @@ http {
 }
 
 # ============================================================================
-# 启用 HTTPS（证书签发后）
+# 证书签发与自动续期（已在 18.222.226.206 上跑通，换机器照做即可）
 #
-# 前提：DNS 已指向本机，且上面的 acme-challenge location 可访问。
+# 前提：DNS 已指向本机，80 端口对公网开放（安全组放行），
+#       且 acme-challenge 的 location 已生效——先用探针验证：
 #
-# 1) 宿主上装 certbot，用 webroot 模式签发（不停 nginx）：
+#   sudo mkdir -p ~/edge-deploy/acme-webroot/.well-known/acme-challenge
+#   echo ok | sudo tee ~/edge-deploy/acme-webroot/.well-known/acme-challenge/probe.txt
+#   sudo chmod -R a+rX ~/edge-deploy/acme-webroot
+#   curl http://cloud.airouterx.com/.well-known/acme-challenge/probe.txt   # 应返回 ok
+#
+# 1) 装 certbot 并签发（webroot 模式，不用停 nginx）：
 #
 #      sudo dnf install -y certbot
-#      sudo certbot certonly --webroot -w ~/edge-deploy/acme-webroot \
+#      sudo certbot certonly --webroot -w /home/ec2-user/edge-deploy/acme-webroot \
 #           -d cloud.airouterx.com -d sub-api.airouterx.com \
-#           --email <你的邮箱> --agree-tos --no-eff-email
+#           --email <邮箱> --agree-tos --no-eff-email --non-interactive
 #
-#    证书落在 /etc/letsencrypt/live/cloud.airouterx.com/
+#    不想留邮箱就把 --email/--no-eff-email 换成 --register-unsafely-without-email，
+#    代价是续期万一静默失败你收不到任何告警。
 #
-# 2) compose 打开 "443:443"，并挂载：
-#      - /etc/letsencrypt:/etc/letsencrypt:ro
+#    两个域名写在同一条命令里 = 一张 SAN 证书，目录名取第一个 -d 的值。
 #
-# 3) 每个业务 server 块加 443 监听：
+# 2) compose 打开 "443:443" 与 /etc/letsencrypt 挂载，然后 up -d 重建。
 #
-#      server {
-#          listen 443 ssl;
-#          http2 on;                      # ← nginx 1.25+ 的写法
-#          server_name cloud.airouterx.com;
-#          ssl_certificate     /etc/letsencrypt/live/cloud.airouterx.com/fullchain.pem;
-#          ssl_certificate_key /etc/letsencrypt/live/cloud.airouterx.com/privkey.pem;
-#          ssl_protocols TLSv1.2 TLSv1.3;
-#          ssl_prefer_server_ciphers off;
-#          ssl_session_cache shared:SSL:10m;
-#          ssl_session_timeout 1d;
-#          ... 其余 location 原样照抄 ...
-#      }
-#
-#    ⚠ nginx 版本决定 http2 的写法：
-#       1.24 及以下：listen 443 ssl http2;   （独立的 http2 on; 会报 unknown directive）
-#       1.25 及以上：listen 443 ssl; + http2 on;
-#      本配置用的镜像见 compose，别照抄错版本。
-#
-# 4) 80 端口加跳转。**先用 302，稳定几天再换 301**：
-#      301 会被浏览器永久缓存，一旦要回退，你没有任何办法远程清掉用户的缓存。
-#
-#      location / { return 302 https://$host$request_uri; }
-#
-#    注意跳转要写在 acme-challenge location 之后，别把质询也跳走了。
-#
-# 5) 自动续签（certbot 的 systemd timer 会自动装上，只需补 reload 钩子）：
+# 3) 续签后让 nginx 重新加载证书。certbot 自己不知道 nginx 在容器里，
+#    必须挂 deploy 钩子：
 #
 #      sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy
 #      sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-edge.sh >/dev/null <<'SH'
@@ -180,6 +207,12 @@ http {
 #      SH
 #      sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-edge.sh
 #
-#      systemctl list-timers | grep certbot        # 确认 timer 已启用
-#      sudo certbot renew --dry-run                # 演练一次，必须通过
+# 4) 启用续期定时器并演练：
+#
+#      sudo systemctl enable --now certbot-renew.timer
+#      systemctl list-timers certbot-renew.timer
+#      sudo certbot renew --dry-run          # 必须通过，否则续期是坏的
+#
+#    证书有效期 90 天，certbot 在剩余 30 天内才会真正续。--dry-run 走的是
+#    Let's Encrypt 的演练环境，不消耗签发额度，可以放心多跑几次。
 # ============================================================================
