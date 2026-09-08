@@ -1,0 +1,41 @@
+# ============================================================================
+# Edge 入口反代 —— 生产
+#
+# 独立于 sub2api-deploy / sub2site 之外，通过 external 网络接入，
+# 这样任一套服务 down 掉都不影响本容器。
+#
+# 部署位置：~/edge-deploy/docker-compose.yml
+# 配套配置：edge-nginx.conf.example → ~/edge-deploy/nginx.conf
+#
+# 目录准备：
+#   mkdir -p ~/edge-deploy/logs ~/edge-deploy/acme-webroot
+# ============================================================================
+services:
+  edge:
+    container_name: edge-nginx
+    # 1.27：宿主内核 6.x 没有老 CentOS 的 seccomp 限制，可以用新版。
+    # 注意这决定了 HTTPS 段该写 "http2 on;" 而不是 "listen 443 ssl http2"。
+    # 测试机 192.168.33.209 是 CentOS 7 / 内核 3.10，那边必须用 1.24-alpine。
+    image: nginx:1.27-alpine
+    restart: always
+    ports:
+      - "80:80"
+      # - "443:443"       # 证书签发后打开
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # ACME HTTP-01 质询的 webroot。certbot 往这里写文件，nginx 从这里读。
+      - ./acme-webroot:/var/www/acme:ro
+      # - /etc/letsencrypt:/etc/letsencrypt:ro    # 证书签发后打开
+      - ./logs:/var/log/nginx
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - sub2api_net
+
+networks:
+  # 复用 sub2api compose 创建的网络，edge 才能用容器名解析到 sub2api / sub2site。
+  # 名字 = sub2api 的 compose 项目目录名 + "_sub2api-network"。
+  # 换机器时如果目录换了名字，这里要跟着改（docker network ls 可查）。
+  sub2api_net:
+    name: sub2api-deploy_sub2api-network
+    external: true
