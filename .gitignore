@@ -11,5 +11,14 @@ vite.config.js
 vite.config.d.ts
 *.tsbuildinfo
 
-# 设计稿画布（Claude Design 导出，含第三方运行时 support.js），5MB，不属于源码
-docs/design/
+# 设计稿画布（Claude Design 导出：39 个 .dc.html 画板 + 26 张图 + 第三方运行时
+# support.js），约 5MB 生成物，不属于源码。
+#
+# 但同目录下手写的评审报告与 prompt 要入库——它们是设计决策的来源，
+# known-issues.md 与部署文档都引用了由它们得出的结论。
+#
+# 写法说明：必须挡 docs/design/* 而不是 docs/design/。
+# 目录本身被忽略时 git 不会往下递归，后面的 ! 取反规则根本不会生效——
+# 这是 gitignore 最常见的坑。挡「目录内的每一项」才留得住取反的余地。
+docs/design/*
+!docs/design/*.md
