@@ -1,61 +1,7 @@
 <template>
   <div data-testid="default-home" class="landing min-h-screen">
-    <!-- ══ 顶部导航 ══ -->
-    <header class="lp-nav">
-      <div class="lp-wrap flex h-14 items-center gap-4">
-        <router-link to="/home" class="flex shrink-0 items-center gap-2">
-          <img
-            v-if="siteLogo"
-            :src="siteLogo"
-            :alt="siteName"
-            class="block h-7 w-auto max-w-[112px] object-contain"
-          />
-          <span v-else aria-hidden="true" class="lp-logo-fallback">{{ brandInitial }}</span>
-          <span class="truncate text-[15px] font-medium">{{ siteName }}</span>
-        </router-link>
-
-        <!-- 顶部导航只放产品主入口。
-             「密钥查询」是持有 key 的人用的排障工具，不是主功能，
-             放这里会让首次访客误以为它是核心；只保留在页脚。 -->
-        <nav class="ml-4 hidden items-center gap-1 md:flex">
-          <router-link v-if="showModelPlaza" to="/model-plaza" class="lp-navlink">
-            {{ t('landingV2.nav.modelPlaza') }}
-          </router-link>
-          <!-- 后台配了 doc_url 就跳外站文档，否则走站内 /docs -->
-          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="lp-navlink">
-            {{ t('landingV2.nav.docs') }}
-          </a>
-          <router-link v-else to="/docs" class="lp-navlink">
-            {{ t('landingV2.nav.docs') }}
-          </router-link>
-        </nav>
-
-        <div class="ml-auto flex items-center gap-2">
-          <LocaleSwitcher />
-          <button
-            type="button"
-            class="btn btn-ghost btn-icon"
-            :aria-label="t('landingV2.nav.toggleTheme')"
-            @click="toggleTheme"
-          >
-            <Icon :name="isDark ? 'sun' : 'moon'" size="sm" />
-          </button>
-          <template v-if="isAuthenticated">
-            <router-link to="/dashboard" class="btn btn-primary btn-sm">
-              {{ t('landingV2.nav.console') }}
-            </router-link>
-          </template>
-          <template v-else>
-            <router-link to="/login" class="btn btn-ghost btn-sm hidden sm:inline-flex">
-              {{ t('landingV2.nav.login') }}
-            </router-link>
-            <router-link to="/register" class="btn btn-primary btn-sm">
-              {{ t('landingV2.nav.start') }}
-            </router-link>
-          </template>
-        </div>
-      </div>
-    </header>
+    <!-- ══ 顶部导航（与模型广场、使用文档共用同一个组件）══ -->
+    <PublicNavBar />
 
     <!-- ══ 首屏 ══ -->
     <section class="lp-wrap lp-pad">
@@ -300,13 +246,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
+import PublicNavBar from '@/components/layout/PublicNavBar.vue'
 import { getModelPlaza, type ModelPlazaResponse } from '@/api/modelPlaza'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
-import { applyTheme, isDarkTheme } from '@/utils/theme'
 import { sanitizeUrl } from '@/utils/url'
 
 const { t } = useI18n()
@@ -354,13 +299,6 @@ const contactHref = computed(() => {
 })
 
 /* ── 主题 ── */
-const isDark = ref(isDarkTheme())
-function toggleTheme() {
-  isDark.value = !isDark.value
-  applyTheme(isDark.value)
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-}
-
 /* ── 平台展示元数据 ── */
 const PLATFORM_COLORS: Record<string, string> = {
   anthropic: 'var(--platform-claude)',
@@ -568,13 +506,6 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
-.lp-wrap {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding-left: 24px;
-  padding-right: 24px;
-}
 
 .lp-pad {
   padding-top: 64px;
@@ -593,42 +524,9 @@ onMounted(async () => {
   border-bottom: 1px solid var(--color-divider);
 }
 
-.lp-nav {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-divider);
-}
 
-.lp-navlink {
-  padding: 0 10px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  color: var(--color-text-2);
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
-}
 
-.lp-navlink:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text);
-}
 
-.lp-logo-fallback {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-  font-size: 14px;
-  font-weight: 600;
-}
 
 .lp-h1 {
   font-size: clamp(32px, 4.4vw, 52px);

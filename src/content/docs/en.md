@@ -1,7 +1,3 @@
-# Documentation
-
-From logging in to running in Codex and Claude Code — about five minutes.
-
 ## Getting started
 
 ### Step 1: Log in

@@ -39,6 +39,17 @@ vi.mock('@/api/modelPlaza', () => ({
   getModelPlaza: vi.fn().mockRejectedValue(new Error('disabled in test')),
 }))
 
+// 顶栏已抽成 PublicNavBar，它用 useRoute 取当前路径做登录回跳目标。
+// 本文件不装真路由，这里补一个最小实现——不能改用 stub：
+// 「模型广场链接出现在 header 里」这条断言查的正是顶栏里的链接。
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vue-router')>()
+  return {
+    ...actual,
+    useRoute: () => ({ fullPath: '/home', params: {}, meta: {} }),
+  }
+})
+
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
   return {

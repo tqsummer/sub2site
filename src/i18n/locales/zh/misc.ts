@@ -86,7 +86,8 @@ export default {
   // 使用文档（公开页 /docs）。正文在 src/content/docs/zh.md，不走 i18n——
   // 长篇散文塞进 .ts 字典既难写又难 review。这里只放标题。
   docs: {
-    title: '使用文档'
+    title: '使用文档',
+    description: '从登录到在 Codex、Claude Code 里跑起来，大约需要 5 分钟。'
   },
 
   // Announcements Page

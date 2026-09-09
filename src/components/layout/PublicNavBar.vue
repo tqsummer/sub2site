@@ -1,77 +1,116 @@
 <template>
-  <header
-    class="glass sticky top-0 z-30 border-b border-divider"
-  >
-    <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-      <!-- 左:站点 logo + 名称 -->
-      <div class="flex min-w-0 items-center gap-3">
-        <template v-if="settings">
-          <span
-            class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-surface shadow-sm ring-1 ring-gray-200 dark:ring-dark-700"
-          >
-            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
-          </span>
-          <span class="truncate text-base font-semibold text-content">
-            {{ siteName }}
-          </span>
-        </template>
-        <template v-else>
-          <span class="h-9 w-9 flex-shrink-0 animate-pulse rounded-xl bg-surface-3" aria-hidden="true"></span>
-          <span class="h-5 w-28 animate-pulse rounded bg-surface-3" aria-hidden="true"></span>
-        </template>
-      </div>
+  <header class="lp-nav">
+    <div class="lp-wrap flex h-14 items-center gap-4">
+      <router-link to="/home" class="flex shrink-0 items-center gap-2">
+        <img
+          v-if="siteLogo"
+          :src="siteLogo"
+          :alt="siteName"
+          class="block h-7 w-auto max-w-[112px] object-contain"
+        />
+        <span v-else aria-hidden="true" class="lp-logo-fallback">{{ brandInitial }}</span>
+        <span class="truncate text-[15px] font-medium">{{ siteName }}</span>
+      </router-link>
 
-      <!-- 右:登录 / 回到后台 -->
-      <RouterLink
-        v-if="isAuthenticated"
-        :to="backTarget"
-        class="inline-flex flex-shrink-0 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
-      >
-        {{ t('modelPlaza.nav.backToDashboard') }}
-      </RouterLink>
-      <RouterLink
-        v-else
-        :to="{ path: '/login', query: { redirect: loginRedirect } }"
-        class="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
-      >
-        {{ t('modelPlaza.nav.login') }}
-      </RouterLink>
+      <!-- 顶部导航只放产品主入口。
+           「密钥查询」是持有 key 的人用的排障工具，不是主功能，
+           放这里会让首次访客误以为它是核心；只保留在页脚。 -->
+      <nav class="ml-4 hidden items-center gap-1 md:flex">
+        <router-link v-if="showModelPlaza" to="/model-plaza" class="lp-navlink">
+          {{ t('landingV2.nav.modelPlaza') }}
+        </router-link>
+        <!-- 后台配了 doc_url 就跳外站文档，否则走站内 /docs -->
+        <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="lp-navlink">
+          {{ t('landingV2.nav.docs') }}
+        </a>
+        <router-link v-else to="/docs" class="lp-navlink">
+          {{ t('landingV2.nav.docs') }}
+        </router-link>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-2">
+        <LocaleSwitcher />
+        <button
+          type="button"
+          class="btn btn-ghost btn-icon"
+          :aria-label="t('landingV2.nav.toggleTheme')"
+          @click="toggleTheme"
+        >
+          <Icon :name="isDark ? 'sun' : 'moon'" size="sm" />
+        </button>
+        <!-- 已登录进控制台，未登录去登录。两态到此为止，
+             所有公开页一致——顶栏在页面间切换时不该变形。 -->
+        <router-link v-if="isAuthenticated" to="/dashboard" class="btn btn-primary btn-sm">
+          {{ t('landingV2.nav.console') }}
+        </router-link>
+        <router-link
+          v-else
+          :to="{ path: '/login', query: { redirect: loginRedirect } }"
+          class="btn btn-primary btn-sm"
+        >
+          {{ t('landingV2.nav.login') }}
+        </router-link>
+      </div>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
 /**
- * 公开页（未登录也能访问）的顶栏：站点 Logo + 名称，右侧登录 / 回到控制台。
+ * 公开页（未登录也能访问）统一顶栏：落地页、模型广场、使用文档共用。
  *
- * 原名 modelPlaza/PlazaNavBar，只服务模型广场。文档页 /docs 需要同样的顶栏，
- * 继续叫 Plaza 会误导，所以移到 layout/ 并正名。
+ * originally 落地页有自己的 header，模型广场用的是另一个只有 logo + 登录按钮的
+ * 简化版（原 modelPlaza/PlazaNavBar）。两者高度、内边距、右侧按钮都不同，
+ * 页面间跳转时顶栏会明显变形。统一成这一个组件。
  *
- * 文案仍复用 modelPlaza.nav.* 的键——两处措辞本就一致，为改个命名去动
- * 双语文件不划算；哪天有第三个公开页再统一提到通用命名空间。
+ * 样式类 .lp-nav / .lp-wrap / .lp-navlink / .lp-logo-fallback 原本是 LandingView
+ * 的 scoped 样式，现已提到 style.css 的 @layer components——它们不再只属于落地页。
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import Icon from '@/components/icons/Icon.vue'
+import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+import { applyTheme, isDarkTheme } from '@/utils/theme'
 
 const { t } = useI18n()
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-// 登录后回到用户原本在看的公开页，而不是写死回模型广场。
-// 对模型广场而言行为不变（当前路径就是 /model-plaza）。
+const settings = computed(() => appStore.cachedPublicSettings)
+
+// 兜底不写品牌名：静态托管下配置要等接口返回，写死会先闪出错误品牌。
+const siteName = computed(() => settings.value?.site_name || appStore.siteName || '')
+const siteLogo = computed(() =>
+  sanitizeUrl(settings.value?.site_logo || appStore.siteLogo || '', {
+    allowRelative: true,
+    allowDataUrl: true,
+  })
+)
+const brandInitial = computed(() => siteName.value.trim().charAt(0).toUpperCase() || 'A')
+
+const docUrl = computed(() => sanitizeUrl(settings.value?.doc_url || appStore.docUrl || ''))
+
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+
+const showModelPlaza = computed(() => {
+  if (!isFeatureFlagEnabled(FeatureFlags.modelPlaza)) return false
+  const requiresAuth = settings.value?.model_plaza_require_auth === true
+  return isAuthenticated.value || !requiresAuth
+})
+
+// 登录后回到用户原本在看的公开页，而不是写死某个页面。
 const loginRedirect = computed(() => route.fullPath)
 
-const settings = computed(() => appStore.cachedPublicSettings)
-  // 兜底不写品牌名：静态托管下配置要等接口返回，写死会先闪出错误品牌。
-const siteName = computed(() => settings.value?.site_name || '')
-const siteLogo = computed(() =>
-  sanitizeUrl(settings.value?.site_logo || '', { allowRelative: true, allowDataUrl: true })
-)
-const isAuthenticated = computed(() => authStore.isAuthenticated)
-const backTarget = computed(() => '/dashboard')
+const isDark = ref(isDarkTheme())
+function toggleTheme() {
+  isDark.value = !isDark.value
+  applyTheme(isDark.value)
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+}
 </script>

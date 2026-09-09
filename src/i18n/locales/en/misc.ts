@@ -88,7 +88,8 @@ export default {
   // Documentation (public page /docs). Body lives in src/content/docs/en.md,
   // not in i18n — long prose in a .ts dictionary is painful to write and review.
   docs: {
-    title: 'Documentation'
+    title: 'Documentation',
+    description: 'From logging in to running in Codex and Claude Code — about five minutes.'
   },
 
   // Announcements Page

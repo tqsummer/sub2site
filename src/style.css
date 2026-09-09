@@ -73,6 +73,62 @@
 }
 
 @layer components {
+  /* ============ 公开页外壳（落地页 / 模型广场 / 使用文档共用） ============ */
+  /* 这几个类原本是 LandingView 的 scoped 样式。顶栏抽成 PublicNavBar 后
+     不再只属于落地页，提到这里共用，避免各页各写一份导致高度和内边距漂移
+     ——页面间跳转顶栏变形，正是这么来的。 */
+  .lp-wrap {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .lp-nav {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-divider);
+  }
+
+  .lp-navlink {
+    padding: 0 10px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--color-text-2);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+
+  .lp-navlink:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+  }
+
+  .lp-logo-fallback {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  @media (max-width: 640px) {
+    .lp-wrap {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+  }
+
   /* ============ 按钮样式 ============ */
   /* 设计稿的按钮是纯色扁平：不用渐变、不用彩色投影。
      焦点环用 --color-accent 实色 2px，满足键盘可见性。 */

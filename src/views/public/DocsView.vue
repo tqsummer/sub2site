@@ -1,8 +1,22 @@
 <template>
-  <div class="flex min-h-screen flex-col bg-app">
+  <!-- 外壳与模型广场保持一致：同样的底色、同样的容器宽度与内边距。
+       两个公开页之间跳转不该有位移感。 -->
+  <div class="min-h-screen bg-surface-2">
     <PublicNavBar />
-    <main class="flex-1 overflow-hidden">
-      <MarkdownDoc :source="content" />
+    <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <div class="space-y-5">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-content sm:text-3xl">{{ t('docs.title') }}</h1>
+          <p class="mt-1.5 text-sm text-content-2">{{ t('docs.description') }}</p>
+        </div>
+
+        <!-- 卡片样式沿用模型广场的 rounded-2xl / border-divider / shadow-card。
+             注意不能加 overflow-hidden：任何祖先上的 overflow 非 visible 都会
+             让内部的 position: sticky 失效，目录就吸不住了。 -->
+        <div class="rounded-2xl border border-divider bg-surface shadow-card">
+          <MarkdownDoc :source="content" variant="page" />
+        </div>
+      </div>
     </main>
   </div>
 </template>
@@ -26,7 +40,7 @@ import MarkdownDoc from '@/components/common/MarkdownDoc.vue'
 import zhDoc from '@/content/docs/zh.md?raw'
 import enDoc from '@/content/docs/en.md?raw'
 
-const { locale } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 
 const settings = computed(() => appStore.cachedPublicSettings)

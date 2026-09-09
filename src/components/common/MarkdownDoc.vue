@@ -1,10 +1,12 @@
 <template>
-  <div class="flex h-full overflow-hidden">
+  <!-- relative 是必须的：收起后的展开按钮用 absolute 定位，根容器若是 static，
+       按钮会落到视口左上角，被 sticky 的站点顶栏（z-30）整个盖住点不到。 -->
+  <div class="relative flex" :class="isPage ? 'gap-0' : 'h-full overflow-hidden'">
     <!-- 目录 -->
-    <aside v-show="tocVisible && tocItems.length > 0" class="toc-sidebar">
+    <aside v-show="tocVisible && tocItems.length > 0" class="toc-sidebar" :class="{ 'toc-sidebar-page': isPage }">
       <div class="toc-header">
         <span class="toc-title">{{ t('customPage.tableOfContents') }}</span>
-        <button type="button" class="toc-close-btn" :aria-label="t('common.close')" @click="tocVisible = false">
+        <button type="button" class="toc-close-btn" :aria-label="t('customPage.tableOfContents')" @click="tocVisible = false">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
       </div>
@@ -27,6 +29,7 @@
       v-show="!tocVisible && tocItems.length > 0"
       type="button"
       class="toc-toggle-btn"
+      :class="{ 'toc-toggle-btn-page': isPage }"
       @click="tocVisible = true"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
@@ -36,7 +39,8 @@
     <!-- 正文 -->
     <div
       ref="contentEl"
-      class="markdown-page-content flex-1 h-full overflow-auto p-6 md:p-10"
+      class="markdown-page-content min-w-0 flex-1"
+      :class="isPage ? 'px-5 py-6 md:px-8 md:py-8' : 'h-full overflow-auto p-6 md:p-10'"
       v-html="renderedHtml"
       @scroll="onContentScroll"
     ></div>
@@ -54,7 +58,7 @@
  * 本组件只负责「把一段 Markdown 变成带目录的文档」，不关心内容从哪来：
  * CustomPageView 从接口取，DocsView 从仓库里的 .md 导入。
  */
-import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -65,12 +69,29 @@ interface TocItem {
   level: number
 }
 
-const props = defineProps<{
-  /** 原始 Markdown 文本。调用方负责好一切预处理（占位符替换、图片地址重写等）。 */
-  source: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** 原始 Markdown 文本。调用方负责好一切预处理（占位符替换、图片地址重写等）。 */
+    source: string
+    /**
+     * 滚动形态，决定目录怎么跟随、滚动高亮监听谁：
+     *
+     * - `panel`（默认）：容器自己定高、内部滚动。用于后台壳子里的自定义页面，
+     *   那里外层已经用 `height: calc(100vh - ...)` 框死了高度。
+     * - `page`：整页滚动，目录 sticky 吸附。用于公开文档页——公开页的规范是
+     *   `min-h-screen` + 正常页面滚动，套内滚容器会和站点其它页面手感不一致。
+     *
+     * 两者的滚动源不同（容器 vs window），滚动高亮必须跟着切换监听目标，
+     * 否则高亮永远不动。
+     */
+    variant?: 'panel' | 'page'
+  }>(),
+  { variant: 'panel' }
+)
 
 const { t } = useI18n()
+
+const isPage = computed(() => props.variant === 'page')
 
 const renderedHtml = ref('')
 const contentEl = ref<HTMLElement | null>(null)
@@ -117,12 +138,39 @@ function render(markdown: string) {
   tocItems.value = toc
 }
 
+/** 整页滚动时，标题要停在吸顶顶栏下方，不能被它盖住 */
+const PAGE_SCROLL_OFFSET = 80
+
+/**
+ * 按 id 找标题元素。
+ *
+ * 不用 `querySelector('#' + CSS.escape(id))`：CSS.escape 在 jsdom 里不存在，
+ * 测试环境一调就抛。而这些 id 是 generateHeadingId 自己生成的，直接比对属性
+ * 既不需要转义也更省事。
+ */
+function findHeading(container: HTMLElement, id: string): HTMLElement | null {
+  const headings = container.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id]')
+  for (const el of headings) {
+    if (el.id === id) return el
+  }
+  return null
+}
+
 function scrollToHeading(id: string) {
   const container = contentEl.value
   if (!container) return
-  const el = container.querySelector(`#${CSS.escape(id)}`)
+  const el = findHeading(container, id)
   if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  if (isPage.value) {
+    // 整页滚动：scrollIntoView 会把标题顶到视口最上沿，正好藏进吸顶顶栏里，
+    // 所以自己算目标位置并留出偏移。
+    const top = el.getBoundingClientRect().top + window.scrollY - PAGE_SCROLL_OFFSET
+    window.scrollTo({ top, behavior: 'smooth' })
+  } else {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   activeHeadingId.value = id
   // 手机上点完目录要让位给正文，否则遮住刚跳过去的内容
   if (window.innerWidth <= 640) {
@@ -131,26 +179,37 @@ function scrollToHeading(id: string) {
 }
 
 let scrollRafId = 0
-function onContentScroll() {
+function updateActiveHeading() {
   if (scrollRafId) return
   scrollRafId = requestAnimationFrame(() => {
     scrollRafId = 0
     const container = contentEl.value
     if (!container || tocItems.value.length === 0) return
 
-    const containerRect = container.getBoundingClientRect()
+    // 判定基准线：整页滚动时是视口顶部下方一点，容器滚动时是容器顶部下方一点
+    const threshold = isPage.value ? PAGE_SCROLL_OFFSET + 20 : container.getBoundingClientRect().top + 100
+
+    // 一次取全部标题建索引，避免在循环里逐个查 DOM
+    const byId = new Map<string, HTMLElement>()
+    container.querySelectorAll<HTMLElement>('h1[id], h2[id], h3[id], h4[id]').forEach((el) => {
+      byId.set(el.id, el)
+    })
+
     let current = ''
     for (const item of tocItems.value) {
-      const el = container.querySelector(`#${CSS.escape(item.id)}`) as HTMLElement | null
+      const el = byId.get(item.id)
       if (!el) continue
-      // 越过容器顶部 100px 的标题即视为「当前章节」，最后一个胜出
-      if (el.getBoundingClientRect().top - containerRect.top <= 100) {
+      // 越过基准线的标题即视为「当前章节」，最后一个胜出
+      if (el.getBoundingClientRect().top <= threshold) {
         current = item.id
       }
     }
     activeHeadingId.value = current
   })
 }
+
+/** 容器滚动模式下由模板的 @scroll 驱动；整页模式下容器不滚，这里不会触发 */
+const onContentScroll = updateActiveHeading
 
 function injectCopyButtons() {
   const container = contentEl.value
@@ -190,7 +249,19 @@ watch(
   { immediate: true }
 )
 
+// 整页滚动模式下容器自身不滚，模板上的 @scroll 永远不会触发，
+// 滚动高亮必须改听 window，否则目录高亮是死的。
+onMounted(() => {
+  if (isPage.value) {
+    window.addEventListener('scroll', updateActiveHeading, { passive: true })
+    updateActiveHeading()
+  }
+})
+
 onBeforeUnmount(() => {
+  if (isPage.value) {
+    window.removeEventListener('scroll', updateActiveHeading)
+  }
   if (scrollRafId) {
     cancelAnimationFrame(scrollRafId)
     scrollRafId = 0
@@ -255,6 +326,40 @@ onBeforeUnmount(() => {
   @apply bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500;
   @apply text-content-2 hover:bg-gray-100 dark:hover:bg-dark-600;
   @apply shadow-sm transition-colors cursor-pointer;
+}
+
+/* ---- 整页滚动模式（公开文档页）---- */
+
+/* 目录吸附在吸顶顶栏（h-14 = 56px）下方，自身独立滚动。
+   容器模式下用的 h-full 在这里会撑成整篇文档那么高，目录会跟着整页滚走。 */
+.toc-sidebar-page {
+  height: auto;
+  position: sticky;
+  top: 72px;
+  max-height: calc(100vh - 88px);
+  @apply rounded-l-2xl bg-transparent;
+}
+
+/* 收起后的展开按钮同样要吸附，否则滚下去就找不到它了。
+   注意根容器必须是 relative——否则 absolute 会落到视口左上角被顶栏盖住。 */
+.toc-toggle-btn-page {
+  position: sticky;
+  top: 72px;
+  left: auto;
+  align-self: flex-start;
+  margin: 12px 0 0 12px;
+}
+
+@media (max-width: 640px) {
+  /* 窄屏下目录改为浮层，仍然吸附，不占正文宽度 */
+  .toc-sidebar-page {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    height: calc(100vh - 56px);
+    max-height: none;
+    @apply rounded-none bg-surface-2;
+  }
 }
 </style>
 

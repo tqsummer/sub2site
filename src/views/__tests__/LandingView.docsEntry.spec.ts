@@ -2,11 +2,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 
 /**
- * 只覆盖落地页的「文档」入口：
- * 后台配了 doc_url 走站外链接，没配走站内 /docs。
+ * 落地页页脚的「文档」入口。
  *
- * 改动前 doc_url 为空时整个入口是隐藏的，等于默认没有文档可看——
- * 这条容易在后续改动里被悄悄改回去，所以单独钉住。
+ * 顶部导航的同名入口已随顶栏迁到 PublicNavBar，那部分由
+ * components/layout/__tests__/PublicNavBar.spec.ts 覆盖，这里把顶栏 stub 掉，
+ * 只盯页脚——两处都容易在后续改动里被漏掉。
  */
 
 const settings = { value: null as Record<string, unknown> | null }
@@ -47,13 +47,13 @@ function mountLanding() {
       stubs: {
         RouterLink: RouterLinkStub,
         Icon: true,
-        LocaleSwitcher: true,
+        PublicNavBar: true,
       },
     },
   })
 }
 
-describe('LandingView 文档入口', () => {
+describe('LandingView 页脚文档入口', () => {
   beforeEach(() => {
     settings.value = { site_name: 'AiRouterX', doc_url: '' }
     Object.defineProperty(window, 'matchMedia', {
@@ -62,16 +62,15 @@ describe('LandingView 文档入口', () => {
     })
   })
 
-  it('doc_url 为空时，导航与页脚都指向站内 /docs', async () => {
+  it('doc_url 为空时指向站内 /docs', async () => {
     const wrapper = mountLanding()
     await flushPromises()
 
     const internal = wrapper.findAllComponents(RouterLinkStub).filter((l) => l.props('to') === '/docs')
-    // 顶部导航一处、页脚「开发者」栏一处
-    expect(internal.length).toBe(2)
+    expect(internal.length).toBe(1)
   })
 
-  it('doc_url 有值时改为站外链接，且不再指向 /docs', async () => {
+  it('doc_url 有值时改为站外链接，且带 noopener', async () => {
     settings.value = { site_name: 'AiRouterX', doc_url: 'https://docs.example.com' }
     const wrapper = mountLanding()
     await flushPromises()
@@ -80,15 +79,11 @@ describe('LandingView 文档入口', () => {
     const external = wrapper
       .findAll('a')
       .filter((a) => (a.attributes('href') ?? '').startsWith('https://docs.example.com'))
-    expect(external.length).toBe(2)
-    // 站外链接必须带 noopener，否则新标签页能通过 window.opener 操作原页面
-    external.forEach((a) => {
-      expect(a.attributes('target')).toBe('_blank')
-      expect(a.attributes('rel')).toContain('noopener')
-    })
+    expect(external.length).toBe(1)
+    expect(external[0].attributes('target')).toBe('_blank')
+    expect(external[0].attributes('rel')).toContain('noopener')
 
-    const internal = wrapper.findAllComponents(RouterLinkStub).filter((l) => l.props('to') === '/docs')
-    expect(internal.length).toBe(0)
+    expect(wrapper.findAllComponents(RouterLinkStub).filter((l) => l.props('to') === '/docs').length).toBe(0)
   })
 
   it('入口在两种情况下都存在——不会出现「没有文档」的状态', async () => {
