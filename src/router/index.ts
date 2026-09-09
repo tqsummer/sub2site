@@ -183,6 +183,18 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'modelPlaza.title'
     }
   },
+  {
+    // 使用文档。必须公开：读者按定义还没登录——「登录后怎么创建密钥」这种
+    // 内容如果要求先登录才能看，就本末倒置了。
+    path: '/docs',
+    name: 'Docs',
+    component: () => import('@/views/public/DocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Docs',
+      titleKey: 'docs.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {

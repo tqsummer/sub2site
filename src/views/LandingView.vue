@@ -21,9 +21,13 @@
           <router-link v-if="showModelPlaza" to="/model-plaza" class="lp-navlink">
             {{ t('landingV2.nav.modelPlaza') }}
           </router-link>
+          <!-- 后台配了 doc_url 就跳外站文档，否则走站内 /docs -->
           <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="lp-navlink">
             {{ t('landingV2.nav.docs') }}
           </a>
+          <router-link v-else to="/docs" class="lp-navlink">
+            {{ t('landingV2.nav.docs') }}
+          </router-link>
         </nav>
 
         <div class="ml-auto flex items-center gap-2">
@@ -524,10 +528,13 @@ const footerCols = computed(() => {
   }
   product.push({ label: t('landingV2.nav.keyUsage'), to: '/key-usage' })
 
-  const developer: { label: string; to: string; external?: boolean }[] = []
-  if (docUrl.value) {
-    developer.push({ label: t('landingV2.nav.docs'), to: docUrl.value, external: true })
-  }
+  // 文档入口始终存在：后台配了 doc_url 就跳外站，否则用站内的 /docs。
+  // 以前 doc_url 为空时整个入口隐藏，等于默认没有文档可看。
+  const developer: { label: string; to: string; external?: boolean }[] = [
+    docUrl.value
+      ? { label: t('landingV2.nav.docs'), to: docUrl.value, external: true }
+      : { label: t('landingV2.nav.docs'), to: '/docs' }
+  ]
 
   const cols = [{ title: t('landingV2.footer.product'), links: product }]
   if (developer.length) {

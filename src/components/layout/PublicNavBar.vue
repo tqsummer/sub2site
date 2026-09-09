@@ -31,7 +31,7 @@
       </RouterLink>
       <RouterLink
         v-else
-        :to="{ path: '/login', query: { redirect: '/model-plaza' } }"
+        :to="{ path: '/login', query: { redirect: loginRedirect } }"
         class="inline-flex flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-primary-500/25 transition-all duration-200 hover:from-primary-600 hover:to-primary-700 hover:shadow-lg hover:shadow-primary-500/30 active:scale-[0.98] dark:shadow-primary-500/20"
       >
         {{ t('modelPlaza.nav.login') }}
@@ -41,15 +41,30 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 公开页（未登录也能访问）的顶栏：站点 Logo + 名称，右侧登录 / 回到控制台。
+ *
+ * 原名 modelPlaza/PlazaNavBar，只服务模型广场。文档页 /docs 需要同样的顶栏，
+ * 继续叫 Plaza 会误导，所以移到 layout/ 并正名。
+ *
+ * 文案仍复用 modelPlaza.nav.* 的键——两处措辞本就一致，为改个命名去动
+ * 双语文件不划算；哪天有第三个公开页再统一提到通用命名空间。
+ */
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
+const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+// 登录后回到用户原本在看的公开页，而不是写死回模型广场。
+// 对模型广场而言行为不变（当前路径就是 /model-plaza）。
+const loginRedirect = computed(() => route.fullPath)
 
 const settings = computed(() => appStore.cachedPublicSettings)
   // 兜底不写品牌名：静态托管下配置要等接口返回，写死会先闪出错误品牌。
